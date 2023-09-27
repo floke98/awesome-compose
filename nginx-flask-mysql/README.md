@@ -1,18 +1,3 @@
-## TODO
-
- - finish the html/js/python framework
-   - move search and add page into home
- - make a "sidenote" in the table
- - make the table self extending with the search results
-
-
-
-
-
-
-
-
-
 
 ## Compose sample application
 
