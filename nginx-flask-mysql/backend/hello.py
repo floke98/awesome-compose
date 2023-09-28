@@ -91,6 +91,7 @@ def fullSearch(search_id):
         int(search_id)
     except ValueError:
         return "No Valid ID"
+    search_id = int(search_id)
 
     if search_id < 0 or search_id > 255:
         return "No Valid ID"
