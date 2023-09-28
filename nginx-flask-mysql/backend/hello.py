@@ -6,6 +6,7 @@ import re
 from mouser_api import ApiSearch
 
 server = Flask(__name__)
+server.run(debug=True)
 conn = None
 
 class DBManager:
@@ -19,7 +20,7 @@ class DBManager:
             auth_plugin='mysql_native_password'
         )
         pf.close()
-        self.cursor = self.connection.cursor()
+        self.cursor = self.connection.cursor(dictionary=True)
     
     def populate_db(self):
         file = open('partList.csv', 'r')
@@ -35,6 +36,7 @@ class DBManager:
         self.cursor.execute('CREATE TABLE parts ('
                             'id INT AUTO_INCREMENT PRIMARY KEY, '
                             'mouserId VARCHAR(40))')
+
         for i in range(len(partIds)):
             self.cursor.execute('INSERT INTO parts (mouserId) VALUES (%s);', [partIds[i]])
 
@@ -45,25 +47,18 @@ class DBManager:
         self.cursor.execute('SELECT id FROM parts where mouserId=(%s);', [mouser_id])
 
         new_id = -1
-        for c in self.cursor:
-            new_id = c[0]
+        for row in self.cursor:
+            new_id = row['id']
 
         self.connection.commit()
         return new_id
 
-
-
     def searchById_db(self, search_id, quick):
         self.cursor.execute('SELECT mouserId FROM parts WHERE id=(%s);', [search_id])
-        # rec = []
-        # for c in self.cursor:
-        #     rec.append(str(c[0]))
-        #     rec.append(c[1])
-        # return rec
         mouser_id = ""
         dic = {}
-        for c in self.cursor:
-            mouser_id = c[0]
+        for row in self.cursor:
+            mouser_id = row['mouserId']
 
         if not quick and len(mouser_id) > 1:
             dic = ApiSearch(mouser_id)
@@ -72,13 +67,17 @@ class DBManager:
 
     def searchByMouserId_db(self, mouser_id):
         self.cursor.execute('SELECT id FROM parts WHERE mouserId=(%s);', [mouser_id])
-        myId = -1
-        for c in self.cursor:
-            myId = c[0]
-        if myId > -1:
-            return myId
-        else:
-            return -1
+        my_id = -1
+        for row in self.cursor:
+            my_id = row['id']
+
+        return my_id
+
+    def selectAll_db(self):
+        self.cursor.execute('SELECT * FROM parts ORDER BY id ASC;')
+        return self.cursor.fetchall()
+
+
 
 @server.route('/<search_id>')
 def fullSearch(search_id):
@@ -91,6 +90,7 @@ def fullSearch(search_id):
         int(search_id)
     except ValueError:
         return "No Valid ID"
+
     search_id = int(search_id)
 
     if search_id < 0 or search_id > 255:
@@ -124,6 +124,22 @@ def quickSearch():
     if not mouser_id:
         return jsonify (dict({'status' : 'fail'}))
     return jsonify (dict({'status' : 'success', 'id' : search_id }))
+
+@server.route('/all')
+def printAll():
+    global conn
+    if not conn:
+        conn = DBManager(password_file='/run/secrets/db-password')
+        conn.populate_db()
+
+    rows = conn.selectAll_db()
+    dic = {}
+    for row in rows:
+        dic[row["id"]] = row["mouserId"]
+
+    dic_keyBeatify = ["Id", "Mouser Id"]
+
+    return render_template('print_all.html', rows = dic, headrow = dic_keyBeatify)
 
 
 @server.route('/add', methods=['POST'])
