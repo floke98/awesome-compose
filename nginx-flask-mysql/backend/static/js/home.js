@@ -1,4 +1,3 @@
-
 document.getElementById("search-form-submit").addEventListener("click", (e) => {
     e.preventDefault();
     const url = '/search';
@@ -51,3 +50,4 @@ document.getElementById("add-form-submit").addEventListener("click", (e) => {
     .catch(error => {
     });
 })
+
