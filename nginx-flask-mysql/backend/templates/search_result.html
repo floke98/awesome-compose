@@ -1,0 +1,32 @@
+<html data-theme="light">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Result</title>
+    <link rel="stylesheet" href="../static/css/sead_dashboard.css">
+    <link rel="stylesheet" href="../static/css/pico-1.5.9/css/pico.min.css">
+  </head>
+
+  <body>
+    <nav class="container-fluid navbar-custom" >
+        <ul>
+            <li><a href="/" class="secondary">Flo's Part DB</a></li>
+        </ul>
+    </nav>
+        <table>
+            <tr>
+                {% for h in headrow %}
+                <th>{{h}}</th>
+                {% endfor %}
+            </tr>
+            <tr>
+                {% for item in values %}
+                <td>{{item}}</td>
+                {% endfor %}
+                {% for item in links %}
+                <td><a href= {{item}} target="_blank">LINK</a></td>
+                {% endfor %}
+            </tr>
+        </table>
+  </body>
+</html>
