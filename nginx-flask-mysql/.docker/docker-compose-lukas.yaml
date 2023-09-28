@@ -33,28 +33,28 @@ services:
       - db-password
     networks:
       - flos_part_db
-      - web
     depends_on:
       - db
 
   proxy:
     build: ../proxy
     restart: always
-    ports:
-      - 80:80
+#    ports:
+#      - 8088:80
     depends_on: 
       - backend
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.smdparts_flo.entrypoints=https"
-      - "traefik.http.routers.smdparts_flo.rule=Host(`smdparts_flo.energyhosting.at`)" ## Hier eure Domain eingeben ##
-      - "traefik.http.routers.smdparts_flo.tls=true"
-      - "traefik.http.routers.smdparts_flo.tls.certresolver=http"
-      - "traefik.http.routers.smdparts_flo.service=smdparts_flo"
-      - "traefik.http.services.smdparts_flo.loadbalancer.server.port=80"
+      - "traefik.http.routers.smdparts-flo.entrypoints=https"
+      - "traefik.http.routers.smdparts-flo.rule=Host(`smdparts-flo.energyhosting.at`)" ## Hier eure Domain eingeben ##
+      - "traefik.http.routers.smdparts-flo.tls=true"
+      - "traefik.http.routers.smdparts-flo.tls.certresolver=http"
+      - "traefik.http.routers.smdparts-flo.service=smdparts-flo"
+      - "traefik.http.services.smdparts-flo.loadbalancer.server.port=80"
       - "traefik.docker.network=web"
     networks:
       - web
+      - flos_part_db
 
 volumes:
   db-data:
