@@ -2,6 +2,7 @@ import os
 from flask import Flask, render_template, redirect, json, request, send_from_directory, session, jsonify
 import mysql.connector
 import csv
+import pickle
 import re
 from mouser_api import ApiSearch
 
@@ -12,24 +13,38 @@ conn = None
 class DBManager:
     def __init__(self, database='example', host="db", user="root", password_file=None):
         pf = open(password_file, 'r')
-        self.connection = mysql.connector.connect(
-            user=user, 
-            password=pf.read(),
-            host=host, # name of the mysql service as set in the docker compose file
-            database=database,
-            auth_plugin='mysql_native_password'
-        )
+
+        try:
+            self.connection = mysql.connector.connect(
+                user=user,
+                password=pf.read(),
+                host=host, # name of the mysql service as set in the docker compose file
+                database=database,
+                auth_plugin='mysql_native_password'
+            )
+        except Exception as error:
+            print("ERROR. Connection to DB not established\n{}".format(error))
+
         pf.close()
         self.cursor = self.connection.cursor(dictionary=True)
+
+        if checkFirstRun():
+            self.populate_db()
     
     def populate_db(self):
+        if not self.cursor:
+            DBManager(password_file='/run/secrets/db-password')
+
+        # write the pickle flag after initialising the db
+        with open('./Flag.pkl', 'wb') as f:
+            pickle.dump("1", f)
+
         file = open('partList.csv', 'r')
         partList = csv.DictReader(file)
 
         partIds = []
         for col in partList:
             partIds.append(col['id'])
-        print(partIds)
 
         self.cursor.execute('DROP TABLE IF EXISTS parts')
 
@@ -77,14 +92,11 @@ class DBManager:
         self.cursor.execute('SELECT * FROM parts ORDER BY id ASC;')
         return self.cursor.fetchall()
 
-
-
 @server.route('/<search_id>')
 def fullSearch(search_id):
     global conn
     if not conn:
         conn = DBManager(password_file='/run/secrets/db-password')
-        conn.populate_db()
 
     try:
         int(search_id)
@@ -118,6 +130,10 @@ def fullSearch(search_id):
 
 @server.route('/search', methods = ['POST'])
 def quickSearch():
+    global conn
+    if not conn:
+        conn = DBManager(password_file='/run/secrets/db-password')
+
     search_id = request.json['search_id']
     response, mouser_id = conn.searchById_db(search_id, True)
 
@@ -130,7 +146,6 @@ def printAll():
     global conn
     if not conn:
         conn = DBManager(password_file='/run/secrets/db-password')
-        conn.populate_db()
 
     rows = conn.selectAll_db()
     dic = {}
@@ -147,7 +162,6 @@ def addNewItem():
     global conn
     if not conn:
         conn = DBManager(password_file='/run/secrets/db-password')
-        conn.populate_db()
 
     # check for  already existing
     mouser_id = request.json['add_id']
@@ -174,13 +188,42 @@ def listBlog():
     global conn
     if not conn:
         conn = DBManager(password_file='/run/secrets/db-password')
-        conn.populate_db()
 
     return render_template("home.html")
 
 @server.errorhandler(404)
 def page_not_found(e):
     return render_template("404.html")
+
+def checkFirstRun():
+    if os.path.isfile('./Flag.pkl'):
+        with open('./Flag.pkl', 'rb') as f:
+            return pickle.load(f)
+    else:
+        return 0
+
+@server.route('/save', methods = ['GET'])
+def saveDb():
+
+    # todo, but could not be bad to refill the db sometimes
+    # clear the pickle file, for reinitialising the db connection afterwards
+    with open('./Flag.pkl', 'wb') as f:
+        pickle.dump("1", f)
+
+    global conn
+    if not conn:
+        conn = DBManager(password_file='/run/secrets/db-password')
+
+    rows = conn.selectAll_db()
+    file = open('partList.csv', 'w')
+    write = csv.writer(file)
+
+    write.writerow("id")
+    for row in rows:
+        write.writerow(row["mouserId"])
+    file.close()
+
+    return jsonify(dict({'status' : 'success'}))
 
 if __name__ == '__main__':
     server.run()

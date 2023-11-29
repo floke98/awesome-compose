@@ -84,3 +84,22 @@ Stop and remove the containers
 ```
 $ docker compose down
 ```
+
+## Debug with Docker
+
+Get into terminal and do:
+```
+$ docker ps
+```
+Check the running docker you want to inspect. Then insert the name into the next one:
+
+```
+$ sudo docker exec -it <name> /bin/sh
+e.g. $ sudo docker exec -it nginx-flask-mysql-backend-1 /bin/sh
+```
+Then reinstall nano as viewer for files:
+
+```
+$ apk update
+$ apk add nano
+```

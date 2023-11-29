@@ -51,3 +51,13 @@ document.getElementById("add-form-submit").addEventListener("click", (e) => {
     .catch(error => {
     });
 })
+
+document.getElementById("save-submit").addEventListener("click", (e) => {
+    e.preventDefault();
+    const url = '/save';
+    fetch(url)
+        .then(response => {
+        //handle response
+        console.log(response);
+      })
+})
