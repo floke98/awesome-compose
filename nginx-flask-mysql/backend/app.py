@@ -2,13 +2,21 @@ import os
 from flask import Flask, render_template, redirect, json, request, send_from_directory, session, jsonify
 import mysql.connector
 import csv
-import pickle
+import sys
 import re
 from mouser_api import ApiSearch
 
 server = Flask(__name__)
 server.run(debug=True)
 conn = None
+
+def check_first_run():
+    if os.path.isfile('./Flag.pkl'):
+        with open('./Flag.pkl', 'rb') as f:
+            return f.read()
+    else:
+        # print('File not exists but 0 returned', file=sys.stderr)
+        return b'\x00'
 
 class DBManager:
     def __init__(self, database='example', host="db", user="root", password_file=None):
@@ -28,23 +36,19 @@ class DBManager:
         pf.close()
         self.cursor = self.connection.cursor(dictionary=True)
 
-        if checkFirstRun():
+        if check_first_run() == b'\x00':
             self.populate_db()
-    
+
     def populate_db(self):
         if not self.cursor:
             DBManager(password_file='/run/secrets/db-password')
 
-        # write the pickle flag after initialising the db
-        with open('./Flag.pkl', 'wb') as f:
-            pickle.dump("1", f)
-
         file = open('partList.csv', 'r')
-        partList = csv.DictReader(file)
+        partlist = csv.DictReader(file)
 
-        partIds = []
-        for col in partList:
-            partIds.append(col['id'])
+        ids = []
+        for col in partlist:
+            ids.append(col['id'])
 
         self.cursor.execute('DROP TABLE IF EXISTS parts')
 
@@ -52,10 +56,14 @@ class DBManager:
                             'id INT AUTO_INCREMENT PRIMARY KEY, '
                             'mouserId VARCHAR(40))')
 
-        for i in range(len(partIds)):
-            self.cursor.execute('INSERT INTO parts (mouserId) VALUES (%s);', [partIds[i]])
+        for i in range(len(ids)):
+            self.cursor.execute('INSERT INTO parts (mouserId) VALUES (%s);', [ids[i]])
 
         self.connection.commit()
+
+        # write the pickle flag after initialising the db
+        with open('./Flag.pkl', 'wb') as f:
+            f.write(b'\x01')
 
     def insert_db(self, mouser_id):
         self.cursor.execute('INSERT INTO parts (mouserId) VALUES (%s);', [mouser_id])
@@ -68,7 +76,7 @@ class DBManager:
         self.connection.commit()
         return new_id
 
-    def searchById_db(self, search_id, quick):
+    def search_by_id_db(self, search_id, quick):
         self.cursor.execute('SELECT mouserId FROM parts WHERE id=(%s);', [search_id])
         mouser_id = ""
         dic = {}
@@ -80,7 +88,7 @@ class DBManager:
 
         return dic, mouser_id
 
-    def searchByMouserId_db(self, mouser_id):
+    def search_by_mouser_id_db(self, mouser_id):
         self.cursor.execute('SELECT id FROM parts WHERE mouserId=(%s);', [mouser_id])
         my_id = -1
         for row in self.cursor:
@@ -88,12 +96,12 @@ class DBManager:
 
         return my_id
 
-    def selectAll_db(self):
+    def select_all_db(self):
         self.cursor.execute('SELECT * FROM parts ORDER BY id ASC;')
         return self.cursor.fetchall()
 
 @server.route('/<search_id>')
-def fullSearch(search_id):
+def full_search_app(search_id):
     global conn
     if not conn:
         conn = DBManager(password_file='/run/secrets/db-password')
@@ -108,7 +116,7 @@ def fullSearch(search_id):
     if search_id < 0 or search_id > 255:
         return "No Valid ID"
 
-    request, mouser_id = conn.searchById_db(search_id, False)
+    request, mouser_id = conn.search_by_id_db(search_id, False)
     if not request:
         # goto not found page
         return "NOT FOUND"
@@ -129,36 +137,36 @@ def fullSearch(search_id):
     return render_template('search_result.html', values = dic.values(), headrow = dic_keyBeatify, links = dic_links.values())
 
 @server.route('/search', methods = ['POST'])
-def quickSearch():
+def quick_search_app():
     global conn
     if not conn:
         conn = DBManager(password_file='/run/secrets/db-password')
 
     search_id = request.json['search_id']
-    response, mouser_id = conn.searchById_db(search_id, True)
+    response, mouser_id = conn.search_by_id_db(search_id, True)
 
     if not mouser_id:
         return jsonify (dict({'status' : 'fail'}))
     return jsonify (dict({'status' : 'success', 'id' : search_id }))
 
 @server.route('/all')
-def printAll():
+def print_all_app():
     global conn
     if not conn:
         conn = DBManager(password_file='/run/secrets/db-password')
 
-    rows = conn.selectAll_db()
+    rows = conn.select_all_db()
     dic = {}
     for row in rows:
         dic[row["id"]] = row["mouserId"]
 
-    dic_keyBeatify = ["Id", "Mouser Id"]
+    dic_key_beatify = ["Id", "Mouser Id"]
 
-    return render_template('print_all.html', rows = dic, headrow = dic_keyBeatify)
+    return render_template('print_all.html', rows = dic, headrow = dic_key_beatify)
 
 
 @server.route('/add', methods=['POST'])
-def addNewItem():
+def add_item_app():
     global conn
     if not conn:
         conn = DBManager(password_file='/run/secrets/db-password')
@@ -166,7 +174,10 @@ def addNewItem():
     # check for  already existing
     mouser_id = request.json['add_id']
 
-    exists =  conn.searchByMouserId_db(mouser_id)
+    if not mouser_id:
+        return jsonify (dict({'status' : 'fail'}))
+
+    exists =  conn.search_by_mouser_id_db(mouser_id)
     if exists > -1:
         return jsonify (dict({'status' : 'exists', 'id' : exists}))
 
@@ -184,46 +195,34 @@ def addNewItem():
         return jsonify(dict({'status': 'fail'}))
 
 @server.route('/')
-def listBlog():
+def home_app():
     global conn
     if not conn:
         conn = DBManager(password_file='/run/secrets/db-password')
-
     return render_template("home.html")
-
-@server.errorhandler(404)
-def page_not_found(e):
-    return render_template("404.html")
-
-def checkFirstRun():
-    if os.path.isfile('./Flag.pkl'):
-        with open('./Flag.pkl', 'rb') as f:
-            return pickle.load(f)
-    else:
-        return 0
-
 @server.route('/save', methods = ['GET'])
-def saveDb():
-
-    # todo, but could not be bad to refill the db sometimes
-    # clear the pickle file, for reinitialising the db connection afterwards
-    with open('./Flag.pkl', 'wb') as f:
-        pickle.dump("1", f)
-
+def save_db_to_csv_app():
     global conn
     if not conn:
         conn = DBManager(password_file='/run/secrets/db-password')
 
-    rows = conn.selectAll_db()
+    rows = conn.select_all_db()
     file = open('partList.csv', 'w')
     write = csv.writer(file)
 
-    write.writerow("id")
+    write.writerow([str('id')])
     for row in rows:
-        write.writerow(row["mouserId"])
+        write.writerow([row["mouserId"]])
     file.close()
 
-    return jsonify(dict({'status' : 'success'}))
+    # reload new csv File
+    # TODO can be removed i guess
+    conn.populate_db()
+    return home_app()
+
+@server.errorhandler(404)
+def page_not_found_app(e):
+    return render_template("404.html")
 
 if __name__ == '__main__':
     server.run()

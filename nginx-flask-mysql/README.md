@@ -50,6 +50,13 @@ Make sure port 80 on the host is not already being in use.
 
 ## Deploy with docker compose
 
+On Linux you have to start the whole docker process before composing with: 
+
+```
+$ sudo systemctl start docker
+```
+
+Then the docker can be deployed: (-d flag for exec from terminal, for debug it's better to not do -d)
 ```
 $ docker compose up -d
 Creating network "nginx-flask-mysql_default" with the default driver

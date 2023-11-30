@@ -21,9 +21,8 @@
             </tr>
             {% for r in rows.items() %}
                 <tr>
-                    {% for item in r %}
-                        <td>{{item}}</td>
-                    {% endfor %}
+                    <td><a href="/{{r.0}}">{{r.0}}</a> </td>
+                    <td> {{r.1}} </td>
                 </tr>
             {% endfor %}
         </table>

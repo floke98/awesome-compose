@@ -8,8 +8,8 @@ RUN target=/root/.cache/pip \
 
 COPY . .
 
-ENV FLASK_APP hello.py
-ENV FLASK_ENV development
+ENV FLASK_APP app.py
+ENV FLASK_DEBUG=1
 ENV FLASK_RUN_PORT 8000
 ENV FLASK_RUN_HOST 0.0.0.0
 
@@ -22,6 +22,7 @@ FROM builder AS dev-envs
 RUN <<EOF
 apk update
 apk add git
+apk add nano
 EOF
 
 RUN <<EOF
