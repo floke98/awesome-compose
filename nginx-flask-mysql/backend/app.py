@@ -132,9 +132,11 @@ def full_search_app(search_id):
     dic_links['url'] = request["SearchResults"]["Parts"][0]["ProductDetailUrl"]
     dic_links['datasheet_url'] = request["SearchResults"]["Parts"][0]["DataSheetUrl"]
 
-    dic_keyBeatify = ["Id", "Mouser Id", "Description", "Manufact.", "Manufact. Nr.", "Link", "Datasheet"]
+    dic_key_beatify = ["Id", "Mouser Id", "Description", "Manufact.", "Manufact. Nr.", "Link", "Datasheet"]
 
-    return render_template('search_result.html', values = dic.values(), headrow = dic_keyBeatify, links = dic_links.values())
+    return render_template('search_result.html', values = dic.values(),
+                                                 headrow = dic_key_beatify,
+                                                 links = dic_links.values())
 
 @server.route('/search', methods = ['POST'])
 def quick_search_app():
