@@ -7,7 +7,7 @@ import re
 from mouser_api import ApiSearch
 
 server = Flask(__name__)
-server.run(debug=True)
+server.run(debug=False)
 conn = None
 
 def check_first_run():
