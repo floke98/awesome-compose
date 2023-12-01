@@ -55,7 +55,11 @@ services:
     networks:
       - web
       - flos_part_db
-
+  restarter:
+    image: docker:cli
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock"]
+    command: ["/bin/sh", "-c", "while true; do sleep 86400; docker restart nginx-flask-mysql_backend_1; done"]
+    restart: unless-stopped
 volumes:
   db-data:
 
