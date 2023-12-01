@@ -19,17 +19,16 @@
                 {% for h in headrow %}
                 <th>{{h}}</th>
                 {% endfor %}
-                <!--<th> <p> Remove</p> </th>-->
+                <th> <p>Remove</p> </th>
             </tr>
             {% for r in rows.items() %}
                 <tr>
                     <td> <a href="/{{r.0}}" id="remove-field">{{r.0}}</a> </td>
                     <td> {{r.1}} </td>
-                    <!--CURRENTLY DEACTIVATED; THE REMOVE DESTROYS THE ORDER OF THE INPUT!!-->
-<!--                    <td> <div role="button" class="secondary" onClick="removePart('{{r.0}}')">
+                    <td> <div role="button" class="secondary" onClick="removePart('{{r.0}}')">
                             <img src=../static/images/remove_icon.png alt="remove" width="20" height="20"/>
                          </div>
-                    </td>-->
+                    </td>
                 </tr>
             {% endfor %}
         </table>

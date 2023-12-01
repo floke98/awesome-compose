@@ -47,17 +47,19 @@ class DBManager:
         partlist = csv.DictReader(file)
 
         ids = []
-        for col in partlist:
-            ids.append(col['id'])
+        mouserIds = []
+        for row in partlist:
+            ids.append(row["id"])
+            mouserIds.append(row['mouserId'])
 
         self.cursor.execute('DROP TABLE IF EXISTS parts')
 
         self.cursor.execute('CREATE TABLE parts ('
-                            'id INT AUTO_INCREMENT PRIMARY KEY, '
+                            'id INT PRIMARY KEY, '
                             'mouserId VARCHAR(40))')
 
         for i in range(len(ids)):
-            self.cursor.execute('INSERT INTO parts (mouserId) VALUES (%s);', [ids[i]])
+            self.cursor.execute('INSERT INTO parts (id, mouserId) VALUES (%s, %s);', [ids[i], mouserIds[i]])
 
         self.connection.commit()
 
@@ -66,13 +68,17 @@ class DBManager:
             f.write(b'\x01')
 
     def insert_db(self, mouser_id):
-        self.cursor.execute('INSERT INTO parts (mouserId) VALUES (%s);', [mouser_id])
-        self.cursor.execute('SELECT id FROM parts WHERE mouserId=(%s);', [mouser_id])
+        self.cursor.execute('SELECT id FROM parts ORDER BY id ASC')
+        ids = self.cursor.fetchall()
+        ids_list = [entry["id"] for entry in ids]
 
-        new_id = -1
-        for row in self.cursor:
-            new_id = row['id']
+        min_id = 1
+        max_id = max(ids_list)
 
+        new_id = next((min_id + i for i, id_val in enumerate(ids_list) if id_val != min_id + i), max_id + 1)
+        #print('new added ID: ' + str(new_id), file=sys.stderr)
+
+        self.cursor.execute('INSERT INTO parts (id, mouserId) VALUES (%s, %s);', [new_id, mouser_id])
         self.connection.commit()
         return new_id
 
@@ -143,7 +149,8 @@ def full_search_app(search_id):
 
     dic_key_beatify = ["Id", "Mouser Id", "Description", "Manufact.", "Manufact. Nr.", "Link", "Datasheet"]
 
-    return render_template('search_result.html', values = dic.values(),
+    return render_template('search_result.html', value_id = search_id,
+                                                 values = dic.values(),
                                                  headrow = dic_key_beatify,
                                                  links = dic_links.values())
 
@@ -233,13 +240,22 @@ def save_db_to_csv_app():
     file = open('partList.csv', 'w')
     write = csv.writer(file)
 
-    write.writerow([str('id')])
+    write.writerow([str('id'), str('mouserId')])
     for row in rows:
-        write.writerow([row["mouserId"]])
+        write.writerow([row["id"], row["mouserId"]])
     file.close()
 
     # reload new csv File
     # TODO can be removed i guess
+    conn.populate_db()
+    return home_app()
+
+@server.route('/undo', methods = ['GET'])
+def undo_db_reload_csv():
+    global conn
+    if not conn:
+        conn = DBManager(password_file='/run/secrets/db-password')
+
     conn.populate_db()
     return home_app()
 

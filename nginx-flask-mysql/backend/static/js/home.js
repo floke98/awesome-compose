@@ -61,3 +61,13 @@ document.getElementById("save-submit").addEventListener("click", (e) => {
         console.log(response);
       })
 })
+
+document.getElementById("undo-submit").addEventListener("click", (e) => {
+    e.preventDefault();
+    const url = '/undo';
+    fetch(url)
+        .then(response => {
+        //handle response
+        console.log(response);
+      })
+})

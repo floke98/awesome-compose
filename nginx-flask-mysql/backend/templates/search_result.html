@@ -5,6 +5,7 @@
     <title>Search Result</title>
     <link rel="stylesheet" href="../static/css/sead_dashboard.css">
     <link rel="stylesheet" href="../static/css/pico-1.5.9/css/pico.min.css">
+    <script defer src="../static/js/all.js"></script>
   </head>
 
   <body>
@@ -19,14 +20,21 @@
                 {% for h in headrow %}
                 <th>{{h}}</th>
                 {% endfor %}
+                <th>Remove</th>
             </tr>
             <tr>
                 {% for item in values %}
-                <td>{{item}}</td>
+                    <td>{{item}}</td>
                 {% endfor %}
+
                 {% for item in links %}
-                <td><a href= {{item}} target="_blank">LINK</a></td>
+                    <td><a href= {{item}} target="_blank">LINK</a></td>
                 {% endfor %}
+
+                <td> <div role="button" class="secondary" onClick="removePart('{{value_id}}')">
+                            <img src=../static/images/remove_icon.png alt="remove" width="20" height="20"/>
+                     </div>
+                </td>
             </tr>
         </table>
   </body>
