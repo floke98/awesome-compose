@@ -2,16 +2,16 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Search Result</title>
+    <title>Print All</title>
     <link rel="stylesheet" href="../static/css/sead_dashboard.css">
     <link rel="stylesheet" href="../static/css/pico-1.5.9/css/pico.min.css">
+  <script defer src="../static/js/all.js"></script>
   </head>
 
   <body>
     <nav class="container-fluid navbar-custom" >
         <ul>
             <li><a href="/" class="secondary">Flo's Part DB</a></li>
-            <li> <a href="/all" class="secondary">Show All</a> </li>
         </ul>
     </nav>
         <table>
@@ -19,11 +19,17 @@
                 {% for h in headrow %}
                 <th>{{h}}</th>
                 {% endfor %}
+                <!--<th> <p> Remove</p> </th>-->
             </tr>
             {% for r in rows.items() %}
                 <tr>
-                    <td><a href="/{{r.0}}">{{r.0}}</a> </td>
+                    <td> <a href="/{{r.0}}" id="remove-field">{{r.0}}</a> </td>
                     <td> {{r.1}} </td>
+                    <!--CURRENTLY DEACTIVATED; THE REMOVE DESTROYS THE ORDER OF THE INPUT!!-->
+<!--                    <td> <div role="button" class="secondary" onClick="removePart('{{r.0}}')">
+                            <img src=../static/images/remove_icon.png alt="remove" width="20" height="20"/>
+                         </div>
+                    </td>-->
                 </tr>
             {% endfor %}
         </table>

@@ -67,7 +67,7 @@ class DBManager:
 
     def insert_db(self, mouser_id):
         self.cursor.execute('INSERT INTO parts (mouserId) VALUES (%s);', [mouser_id])
-        self.cursor.execute('SELECT id FROM parts where mouserId=(%s);', [mouser_id])
+        self.cursor.execute('SELECT id FROM parts WHERE mouserId=(%s);', [mouser_id])
 
         new_id = -1
         for row in self.cursor:
@@ -75,6 +75,15 @@ class DBManager:
 
         self.connection.commit()
         return new_id
+
+    def remove_db(self, mouser_id):
+        exists = self.search_by_id_db(mouser_id, True)
+        if not exists:
+            return False
+
+        self.cursor.execute('DELETE FROM parts WHERE id=(%s);', [mouser_id])
+        self.connection.commit()
+        return True
 
     def search_by_id_db(self, search_id, quick):
         self.cursor.execute('SELECT mouserId FROM parts WHERE id=(%s);', [search_id])
@@ -151,7 +160,7 @@ def quick_search_app():
         return jsonify (dict({'status' : 'fail'}))
     return jsonify (dict({'status' : 'success', 'id' : search_id }))
 
-@server.route('/all')
+@server.route('/all', methods = ['GET'])
 def print_all_app():
     global conn
     if not conn:
@@ -166,6 +175,18 @@ def print_all_app():
 
     return render_template('print_all.html', rows = dic, headrow = dic_key_beatify)
 
+@server.route('/all', methods=['POST'])
+def remove_part():
+    global conn
+    if not conn:
+        conn = DBManager(password_file='/run/secrets/db-password')
+
+    rem_id = request.json['rem_id']
+
+    if conn.remove_db(rem_id):
+        return jsonify(dict({'status': 'success'}))
+
+    return jsonify(dict({'status' : 'fail'}))
 
 @server.route('/add', methods=['POST'])
 def add_item_app():
