@@ -32,6 +32,7 @@ class DBManager:
             )
         except Exception as error:
             print("ERROR. Connection to DB not established\n{}".format(error))
+            print("ERROR. Connection to DB not established\n{}".format(error), file=sys.stderr)
 
         pf.close()
         self.cursor = self.connection.cursor(dictionary=True)
@@ -40,9 +41,6 @@ class DBManager:
             self.populate_db()
 
     def populate_db(self):
-        if not self.cursor:
-            DBManager(password_file='/run/secrets/db-password')
-
         file = open('partList.csv', 'r')
         partlist = csv.DictReader(file)
 
