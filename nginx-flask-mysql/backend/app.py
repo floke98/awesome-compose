@@ -8,7 +8,6 @@ from mouser_api import ApiSearch
 
 server = Flask(__name__)
 server.run(debug=True)
-conn = None
 
 def check_first_run():
     if os.path.isfile('./Flag.pkl'):
@@ -21,24 +20,43 @@ def check_first_run():
 class DBManager:
     def __init__(self, database='example', host="db", user="root", password_file=None):
         pf = open(password_file, 'r')
+        attempts = 10
+        self.connection = None
 
-        try:
-            self.connection = mysql.connector.connect(
-                user=user,
-                password=pf.read(),
-                host=host, # name of the mysql service as set in the docker compose file
-                database=database,
-                auth_plugin='mysql_native_password'
-            )
-        except Exception as error:
-            print("ERROR. Connection to DB not established\n{}".format(error))
-            print("ERROR. Connection to DB not established\n{}".format(error), file=sys.stderr)
+        while (not self.connection) and attempts > 0:
+            attempts = attempts - 1
+            try:
+                self.connection = mysql.connector.connect(
+                    user=user,
+                    password=pf.read(),
+                    host=host, # name of the mysql service as set in the docker compose file
+                    database=database,
+                    auth_plugin='mysql_native_password'
+                )
+            except Exception as error:
+                print("ERROR. Connection to DB {0} attempt not established\n{1}".format(attempts, error))
+                print("ERROR. Connection to DB {0} not established\n{1}".format(attempts, error), file=sys.stderr)
 
         pf.close()
+        if not self.connection:
+            print("ERROR. Could not create Instance of DB Connection!", file=sys.stderr)
+            return
+
         self.cursor = self.connection.cursor(dictionary=True)
 
         if check_first_run() == b'\x00':
             self.populate_db()
+
+    def close_after_every_use_db(self):
+        try:
+            self.cursor.close()
+        except Exception as error:
+            print("ERROR. Cant close cursor!\n{}".format(error), file=sys.stderr)
+
+        try:
+            self.connection.close()
+        except Exception as error:
+            print("ERROR. Cant close connection!\n{}".format(error), file=sys.stderr)
 
     def populate_db(self):
         file = open('partList.csv', 'r')
@@ -60,7 +78,6 @@ class DBManager:
             self.cursor.execute('INSERT INTO parts (id, mouserId) VALUES (%s, %s);', [ids[i], mouserIds[i]])
 
         self.connection.commit()
-
         # write the pickle flag after initialising the db
         with open('./Flag.pkl', 'wb') as f:
             f.write(b'\x01')
@@ -115,9 +132,7 @@ class DBManager:
 
 @server.route('/<search_id>')
 def full_search_app(search_id):
-    global conn
-    if not conn:
-        conn = DBManager(password_file='/run/secrets/db-password')
+    db = DBManager(password_file='/run/secrets/db-password')
 
     try:
         int(search_id)
@@ -129,7 +144,8 @@ def full_search_app(search_id):
     if search_id < 0 or search_id > 255:
         return "No Valid ID"
 
-    request, mouser_id = conn.search_by_id_db(search_id, False)
+    request, mouser_id = db.search_by_id_db(search_id, False)
+    db.close_after_every_use_db()
     if not request:
         # goto not found page
         return "NOT FOUND"
@@ -154,50 +170,45 @@ def full_search_app(search_id):
 
 @server.route('/search', methods = ['POST'])
 def quick_search_app():
-    global conn
-    if not conn:
-        conn = DBManager(password_file='/run/secrets/db-password')
+    db = DBManager(password_file='/run/secrets/db-password')
 
     search_id = request.json['search_id']
-    response, mouser_id = conn.search_by_id_db(search_id, True)
+    response, mouser_id = db.search_by_id_db(search_id, True)
 
+    db.close_after_every_use_db()
     if not mouser_id:
         return jsonify (dict({'status' : 'fail'}))
     return jsonify (dict({'status' : 'success', 'id' : search_id }))
 
 @server.route('/all', methods = ['GET'])
 def print_all_app():
-    global conn
-    if not conn:
-        conn = DBManager(password_file='/run/secrets/db-password')
+    db = DBManager(password_file='/run/secrets/db-password')
 
-    rows = conn.select_all_db()
+    rows = db.select_all_db()
     dic = {}
     for row in rows:
         dic[row["id"]] = row["mouserId"]
 
     dic_key_beatify = ["Id", "Mouser Id"]
-
+    db.close_after_every_use_db()
     return render_template('print_all.html', rows = dic, headrow = dic_key_beatify)
 
 @server.route('/all', methods=['POST'])
 def remove_part():
-    global conn
-    if not conn:
-        conn = DBManager(password_file='/run/secrets/db-password')
+    db = DBManager(password_file='/run/secrets/db-password')
 
     rem_id = request.json['rem_id']
 
-    if conn.remove_db(rem_id):
+    if db.remove_db(rem_id):
+        db.close_after_every_use_db()
         return jsonify(dict({'status': 'success'}))
 
+    db.close_after_every_use_db()
     return jsonify(dict({'status' : 'fail'}))
 
 @server.route('/add', methods=['POST'])
 def add_item_app():
-    global conn
-    if not conn:
-        conn = DBManager(password_file='/run/secrets/db-password')
+    db = DBManager(password_file='/run/secrets/db-password')
 
     # check for  already existing
     mouser_id = request.json['add_id']
@@ -205,7 +216,7 @@ def add_item_app():
     if not mouser_id:
         return jsonify (dict({'status' : 'fail'}))
 
-    exists =  conn.search_by_mouser_id_db(mouser_id)
+    exists =  db.search_by_mouser_id_db(mouser_id)
     if exists > -1:
         return jsonify (dict({'status' : 'exists', 'id' : exists}))
 
@@ -216,7 +227,8 @@ def add_item_app():
         return jsonify (dict({'status' : 'fail'}))
 
     # insert
-    new_id = conn.insert_db(mouser_id)
+    new_id = db.insert_db(mouser_id)
+    db.close_after_every_use_db()
     if new_id > -1:
         return jsonify (dict({'status' : 'success', 'id' : new_id}))
     else:
@@ -224,17 +236,14 @@ def add_item_app():
 
 @server.route('/')
 def home_app():
-    global conn
-    if not conn:
-        conn = DBManager(password_file='/run/secrets/db-password')
+    db = DBManager(password_file='/run/secrets/db-password')
+    db.close_after_every_use_db()
     return render_template("home.html")
 @server.route('/save', methods = ['GET'])
 def save_db_to_csv_app():
-    global conn
-    if not conn:
-        conn = DBManager(password_file='/run/secrets/db-password')
 
-    rows = conn.select_all_db()
+    db = DBManager(password_file='/run/secrets/db-password')
+    rows = db.select_all_db()
     file = open('partList.csv', 'w')
     write = csv.writer(file)
 
@@ -244,17 +253,16 @@ def save_db_to_csv_app():
     file.close()
 
     # reload new csv File
-    # TODO can be removed i guess
-    conn.populate_db()
+    db.populate_db()
+    db.close_after_every_use_db()
     return home_app()
 
 @server.route('/undo', methods = ['GET'])
 def undo_db_reload_csv():
-    global conn
-    if not conn:
-        conn = DBManager(password_file='/run/secrets/db-password')
+    db = DBManager(password_file='/run/secrets/db-password')
+    db.populate_db()
+    db.close_after_every_use_db()
 
-    conn.populate_db()
     return home_app()
 
 @server.errorhandler(404)
