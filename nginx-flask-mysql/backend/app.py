@@ -1,6 +1,7 @@
 import os
 from flask import Flask, render_template, redirect, json, request, send_from_directory, session, jsonify
 import mysql.connector
+from mysql.connector.errors import Error
 import csv
 import sys
 import re
@@ -9,6 +10,10 @@ from mouser_api import ApiSearch
 server = Flask(__name__)
 server.run(debug=True)
 
+# ------------------------------------------------------------------------------
+# Globals
+# ------------------------------------------------------------------------------
+db = None
 def check_first_run():
     if os.path.isfile('./Flag.pkl'):
         with open('./Flag.pkl', 'rb') as f:
@@ -17,36 +22,106 @@ def check_first_run():
         # print('File not exists but 0 returned', file=sys.stderr)
         return b'\x00'
 
+# ------------------------------------------------------------------------------
+# Database Class
+# ------------------------------------------------------------------------------
 class DBManager:
-    def __init__(self, database='example', host="db", user="root", password_file=None):
-        pf = open(password_file, 'r')
-        attempts = 10
+    # --------------------------------------------------------------------------
+    # Private
+    # --------------------------------------------------------------------------
+    def __init__(self):
         self.connection = None
+        self.cursor = None
 
-        while (not self.connection) and attempts > 0:
+        first_run = b'\x00'
+        if os.path.isfile('./Flag.pkl'):
+            with open('./Flag.pkl', 'rb') as f:
+                first_run =  f.read()
+
+        if first_run == b'\x00':
+            self.populate_db()
+
+    def __connect_to_db( self, attempts=3, database='example', host="db",
+                    user="root", password_file="/run/secrets/db-password"):
+        # check for a valid connection still holding,
+            # should not happen too often
+        try:
+            if self.connection.is_connected():
+                self.cursor = self.connection.cursor(dictionary=True)
+                return 1
+        except Exception:
+            pass
+
+        pf = open(password_file, 'r')
+        pw = pf.read()
+        pf.close()
+
+        while attempts > 0:
             attempts = attempts - 1
             try:
-                self.connection = mysql.connector.connect(
+                conn = mysql.connector.connect(
                     user=user,
-                    password=pf.read(),
+                    password=pw,
                     host=host, # name of the mysql service as set in the docker compose file
                     database=database,
                     auth_plugin='mysql_native_password'
                 )
+                if conn and conn.is_connected():
+                    self.connection = conn
+                    self.cursor = conn.cursor(dictionary=True)
+                    print("\n GOT A CONNECTION \n", file=sys.stderr)
+                    return 1
+
             except Exception as error:
-                print("ERROR. Connection to DB {0} attempt not established\n{1}".format(attempts, error))
-                print("ERROR. Connection to DB {0} not established\n{1}".format(attempts, error), file=sys.stderr)
+                print("ERROR. Connection to DB in attempt {0}, not established\n{1}".format(attempts, error), file=sys.stderr)
+        self.connection = None
+        self.cursor = None
+        return 0
+    def __execute_sql_query_db(self, sql_query, data=None):
+        success = False
+        num_affected_rows = 0
+        return_val = None
+        try:
+            if self.__connect_to_db(attempts=1):
+                if data is None or len(data) < 1:
+                    num_affected_rows = self.cursor.execute(sql_query)
+                else:
+                    num_affected_rows = self.cursor.execute(sql_query, data)
 
-        pf.close()
-        if not self.connection:
-            print("ERROR. Could not create Instance of DB Connection!", file=sys.stderr)
-            return
+                if 'SELECT' in sql_query:
+                    return_val = self.cursor.fetchall()
 
-        self.cursor = self.connection.cursor(dictionary=True)
+                self.cursor.close()
+                self.connection.commit()
+                success = True
+                print("During Query: {0}\n{1}\n".format(num_affected_rows, return_val), file=sys.stderr)
+        except mysql.connector.Error as e:
+            print("ERROR. Could not execute query!!\n{}{}".format(e.errno, e.msg), file=sys.stderr)
 
-        if check_first_run() == b'\x00':
-            self.populate_db()
+        return success, num_affected_rows, return_val
 
+    def __execute_sql_query_with_retry_db(self, sql_query, data=None, attempts=3):
+        success = False
+        num_affected_rows = 0
+        return_val = None
+
+        if attempts < 1:
+            return (False, 0, None)
+        attempts_after_this = attempts - 1
+
+        try:
+            (success, num_affected_rows, return_val) = self.__execute_sql_query_db(sql_query, data)
+        except BaseException as e:
+            success = False
+
+        if success:
+            return success, num_affected_rows, return_val
+        else:
+            return self.__execute_sql_query_with_retry_db(sql_query, data, attempts_after_this)
+
+    # --------------------------------------------------------------------------
+    # Public Functions
+    # --------------------------------------------------------------------------
     def close_after_every_use_db(self):
         try:
             self.cursor.close()
@@ -55,10 +130,14 @@ class DBManager:
 
         try:
             self.connection.close()
+            print("\n CLOSED THE CONNECTION \n", file=sys.stderr)
         except Exception as error:
             print("ERROR. Cant close connection!\n{}".format(error), file=sys.stderr)
 
     def populate_db(self):
+        if not self.__connect_to_db():
+            return
+
         file = open('partList.csv', 'r')
         partlist = csv.DictReader(file)
 
@@ -68,33 +147,35 @@ class DBManager:
             ids.append(row["id"])
             mouserIds.append(row['mouserId'])
 
-        self.cursor.execute('DROP TABLE IF EXISTS parts')
 
-        self.cursor.execute('CREATE TABLE parts ('
-                            'id INT PRIMARY KEY, '
-                            'mouserId VARCHAR(40))')
+        self.__execute_sql_query_with_retry_db('DROP TABLE IF EXISTS parts')
+        retval = self.__execute_sql_query_with_retry_db('CREATE TABLE parts ('
+                                               'id INT PRIMARY KEY, '
+                                               'mouserId VARCHAR(40))')
 
         for i in range(len(ids)):
-            self.cursor.execute('INSERT INTO parts (id, mouserId) VALUES (%s, %s);', [ids[i], mouserIds[i]])
-
-        self.connection.commit()
+            self.__execute_sql_query_with_retry_db('INSERT INTO parts (id, mouserId) VALUES (%s, %s);',
+                                                   [ids[i], mouserIds[i]])
         # write the pickle flag after initialising the db
-        with open('./Flag.pkl', 'wb') as f:
-            f.write(b'\x01')
+        if retval[0]:
+            with open('./Flag.pkl', 'wb') as f:
+                f.write(b'\x01')
+
+        self.close_after_every_use_db()
 
     def insert_db(self, mouser_id):
-        self.cursor.execute('SELECT id FROM parts ORDER BY id ASC')
-        ids = self.cursor.fetchall()
-        ids_list = [entry["id"] for entry in ids]
+        suc, num, ids = self.__execute_sql_query_with_retry_db(
+            'SELECT id FROM parts ORDER BY id ASC')
 
+        ids_list = [entry["id"] for entry in ids]
         min_id = 1
         max_id = max(ids_list)
-
         new_id = next((min_id + i for i, id_val in enumerate(ids_list) if id_val != min_id + i), max_id + 1)
-        #print('new added ID: ' + str(new_id), file=sys.stderr)
 
-        self.cursor.execute('INSERT INTO parts (id, mouserId) VALUES (%s, %s);', [new_id, mouser_id])
-        self.connection.commit()
+        self.__execute_sql_query_with_retry_db(
+            'INSERT INTO parts (id, mouserId) VALUES (%s, %s);',
+            [new_id, mouser_id])
+        self.close_after_every_use_db()
         return new_id
 
     def remove_db(self, mouser_id):
@@ -102,37 +183,59 @@ class DBManager:
         if not exists:
             return False
 
-        self.cursor.execute('DELETE FROM parts WHERE id=(%s);', [mouser_id])
-        self.connection.commit()
-        return True
+        ret = self.__execute_sql_query_with_retry_db('DELETE FROM parts WHERE id=(%s);',
+                                            [mouser_id])
+        self.close_after_every_use_db()
+        return ret[0]
 
-    def search_by_id_db(self, search_id, quick):
-        self.cursor.execute('SELECT mouserId FROM parts WHERE id=(%s);', [search_id])
+    def search_by_id_db(self, search_id, quick, let_conn_open=False):
+        suc, num, ret = self.__execute_sql_query_with_retry_db(
+            'SELECT mouserId FROM parts WHERE id=(%s);',
+            [search_id])
+        print("my printf {0} \n".format(ret), file=sys.stderr)
+
         mouser_id = ""
         dic = {}
-        for row in self.cursor:
+        for row in ret:
             mouser_id = row['mouserId']
 
         if not quick and len(mouser_id) > 1:
             dic = ApiSearch(mouser_id)
 
+        if not let_conn_open:
+            self.close_after_every_use_db()
+
         return dic, mouser_id
 
-    def search_by_mouser_id_db(self, mouser_id):
-        self.cursor.execute('SELECT id FROM parts WHERE mouserId=(%s);', [mouser_id])
+    def search_by_mouser_id_db(self, mouser_id, let_conn_open=False):
+        suc, num, ret = self.__execute_sql_query_with_retry_db(
+            'SELECT id FROM parts WHERE mouserId=(%s);',
+            [mouser_id])
+
         my_id = -1
-        for row in self.cursor:
+        for row in ret:
             my_id = row['id']
+
+        if not let_conn_open:
+            self.close_after_every_use_db()
 
         return my_id
 
-    def select_all_db(self):
-        self.cursor.execute('SELECT * FROM parts ORDER BY id ASC;')
-        return self.cursor.fetchall()
+    def select_all_db(self, let_conn_open=False):
+        suc, num, ret = self.__execute_sql_query_with_retry_db(
+            'SELECT * FROM parts ORDER BY id ASC;')
+        if not let_conn_open:
+            self.close_after_every_use_db()
+        return ret
 
+# ------------------------------------------------------------------------------
+# Server Functions GET
+# ------------------------------------------------------------------------------
 @server.route('/<search_id>')
 def full_search_app(search_id):
-    db = DBManager(password_file='/run/secrets/db-password')
+    global db
+    if not db:
+        db = DBManager()
 
     try:
         int(search_id)
@@ -140,12 +243,10 @@ def full_search_app(search_id):
         return "No Valid ID"
 
     search_id = int(search_id)
-
     if search_id < 0 or search_id > 255:
         return "No Valid ID"
 
     request, mouser_id = db.search_by_id_db(search_id, False)
-    db.close_after_every_use_db()
     if not request:
         # goto not found page
         return "NOT FOUND"
@@ -167,48 +268,42 @@ def full_search_app(search_id):
                                                  values = dic.values(),
                                                  headrow = dic_key_beatify,
                                                  links = dic_links.values())
-
-@server.route('/search', methods = ['POST'])
-def quick_search_app():
-    db = DBManager(password_file='/run/secrets/db-password')
-
-    search_id = request.json['search_id']
-    response, mouser_id = db.search_by_id_db(search_id, True)
-
-    db.close_after_every_use_db()
-    if not mouser_id:
-        return jsonify (dict({'status' : 'fail'}))
-    return jsonify (dict({'status' : 'success', 'id' : search_id }))
-
 @server.route('/all', methods = ['GET'])
 def print_all_app():
-    db = DBManager(password_file='/run/secrets/db-password')
+    global db
+    if not db:
+        db = DBManager()
 
     rows = db.select_all_db()
     dic = {}
     for row in rows:
         dic[row["id"]] = row["mouserId"]
-
     dic_key_beatify = ["Id", "Mouser Id"]
-    db.close_after_every_use_db()
+
     return render_template('print_all.html', rows = dic, headrow = dic_key_beatify)
 
+# ------------------------------------------------------------------------------
+# Server Functions POST
+# ------------------------------------------------------------------------------
 @server.route('/all', methods=['POST'])
 def remove_part():
-    db = DBManager(password_file='/run/secrets/db-password')
+    global db
+    if not db:
+        db = DBManager()
 
     rem_id = request.json['rem_id']
-
-    if db.remove_db(rem_id):
-        db.close_after_every_use_db()
+    if not rem_id:
+        return jsonify(dict({'status' : 'fail'}))
+    elif db.remove_db(rem_id):
         return jsonify(dict({'status': 'success'}))
-
-    db.close_after_every_use_db()
-    return jsonify(dict({'status' : 'fail'}))
+    else:
+        return jsonify(dict({'status' : 'fail'}))
 
 @server.route('/add', methods=['POST'])
 def add_item_app():
-    db = DBManager(password_file='/run/secrets/db-password')
+    global db
+    if not db:
+        db = DBManager()
 
     # check for  already existing
     mouser_id = request.json['add_id']
@@ -216,8 +311,9 @@ def add_item_app():
     if not mouser_id:
         return jsonify (dict({'status' : 'fail'}))
 
-    exists =  db.search_by_mouser_id_db(mouser_id)
+    exists =  db.search_by_mouser_id_db(mouser_id, True)
     if exists > -1:
+        db.close_after_every_use_db()
         return jsonify (dict({'status' : 'exists', 'id' : exists}))
 
     # check for valid mouser id
@@ -225,25 +321,37 @@ def add_item_app():
 
     if dic['SearchResults']['NumberOfResult'] > 1 or dic['SearchResults']['NumberOfResult'] < 0:
         return jsonify (dict({'status' : 'fail'}))
-
     # insert
     new_id = db.insert_db(mouser_id)
-    db.close_after_every_use_db()
+
     if new_id > -1:
         return jsonify (dict({'status' : 'success', 'id' : new_id}))
     else:
         return jsonify(dict({'status': 'fail'}))
 
-@server.route('/')
-def home_app():
-    db = DBManager(password_file='/run/secrets/db-password')
-    db.close_after_every_use_db()
-    return render_template("home.html")
+@server.route('/search', methods = ['POST'])
+def quick_search_app():
+    global db
+    if not db:
+        db = DBManager()
+
+    search_id = request.json['search_id']
+    response, mouser_id = db.search_by_id_db(search_id, True, False)
+
+    if not mouser_id:
+        return jsonify (dict({'status' : 'fail'}))
+    return jsonify (dict({'status' : 'success', 'id' : search_id }))
+
+# ------------------------------------------------------------------------------
+# CSV Document Operations
+# ------------------------------------------------------------------------------
 @server.route('/save', methods = ['GET'])
 def save_db_to_csv_app():
+    global db
+    if not db:
+        db = DBManager()
 
-    db = DBManager(password_file='/run/secrets/db-password')
-    rows = db.select_all_db()
+    rows = db.select_all_db(let_conn_open=True)
     file = open('partList.csv', 'w')
     write = csv.writer(file)
 
@@ -254,20 +362,33 @@ def save_db_to_csv_app():
 
     # reload new csv File
     db.populate_db()
-    db.close_after_every_use_db()
     return home_app()
 
 @server.route('/undo', methods = ['GET'])
 def undo_db_reload_csv():
-    db = DBManager(password_file='/run/secrets/db-password')
-    db.populate_db()
-    db.close_after_every_use_db()
+    global db
+    if not db:
+        db = DBManager()
 
+    db.populate_db()
     return home_app()
+
+# ------------------------------------------------------------------------------
+# Main Pages
+# ------------------------------------------------------------------------------
+@server.route('/')
+def home_app():
+    global db
+    if not db:
+        db = DBManager()
+    return render_template("home.html")
 
 @server.errorhandler(404)
 def page_not_found_app(e):
     return render_template("404.html")
 
+# ------------------------------------------------------------------------------
+# Main
+# ------------------------------------------------------------------------------
 if __name__ == '__main__':
     server.run()
