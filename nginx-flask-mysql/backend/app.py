@@ -10,6 +10,15 @@ from mouser_api import ApiSearch
 server = Flask(__name__)
 server.run(debug=True)
 
+# helper:
+# https://stackoverflow.com/questions/13568508/python-mysql-handling-timeouts
+# https://stackoverflow.com/questions/5504340/python-mysqldb-connection-close-vs-cursor-close
+# https://stackoverflow.com/questions/26743103/how-to-check-the-connection-alive-in-python
+
+#TODO
+# outsource the dbmanage rinto another file
+# cleanup
+
 # ------------------------------------------------------------------------------
 # Globals
 # ------------------------------------------------------------------------------
@@ -69,7 +78,7 @@ class DBManager:
                 if conn and conn.is_connected():
                     self.connection = conn
                     self.cursor = conn.cursor(dictionary=True)
-                    print("\n GOT A CONNECTION \n", file=sys.stderr)
+                    print("\n OPENED a CONNECTION \n", file=sys.stderr)
                     return 1
 
             except Exception as error:
@@ -89,7 +98,10 @@ class DBManager:
                     num_affected_rows = self.cursor.execute(sql_query, data)
 
                 if 'SELECT' in sql_query:
-                    return_val = self.cursor.fetchall()
+                    try:
+                        return_val = self.cursor.fetchall()
+                    except Exception as e:
+                        pass
 
                 self.cursor.close()
                 self.connection.commit()
