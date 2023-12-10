@@ -12,7 +12,7 @@ services:
     secrets:
       - db-password
     volumes:
-      - db-data:/var/lib/mysql
+      - ./db-data:/var/lib/mysql
     networks:
       - flos_part_db
     environment:
@@ -60,8 +60,6 @@ services:
     volumes: ["/var/run/docker.sock:/var/run/docker.sock"]
     command: ["/bin/sh", "-c", "while true; do sleep 86400; docker restart nginx-flask-mysql_backend_1; done"]
     restart: unless-stopped
-volumes:
-  db-data:
 
 secrets:
   db-password:
