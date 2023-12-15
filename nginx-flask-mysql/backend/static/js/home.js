@@ -56,9 +56,16 @@ document.getElementById("save-submit").addEventListener("click", (e) => {
     e.preventDefault();
     const url = '/save';
     fetch(url)
-        .then(response => {
+        .then(response => response.json())
+        .then(data => {
         //handle response
-        console.log(response);
+            if(data.status === 'success') {
+                location.href = "/";
+            } else {
+                // fail
+                window.alert("Could not save file!\n" + data.message)
+            }
+
       })
 })
 

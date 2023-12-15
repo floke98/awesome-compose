@@ -16,7 +16,7 @@ server.run(debug=True)
 # https://stackoverflow.com/questions/26743103/how-to-check-the-connection-alive-in-python
 
 #TODO
-# outsource the dbmanage rinto another file
+# outsource the dbmanager into another file
 # cleanup
 
 # ------------------------------------------------------------------------------
@@ -364,8 +364,13 @@ def save_db_to_csv_app():
         db = DBManager()
 
     rows = db.select_all_db(let_conn_open=True)
-    file = open('partList.csv', 'w')
-    write = csv.writer(file)
+
+    try:
+        file = open('partList.csv', 'w')
+        write = csv.writer(file)
+    except Exception as e:
+        text = str(e)
+        return jsonify(dict({'status': 'fail', 'message': text}))
 
     write.writerow([str('id'), str('mouserId')])
     for row in rows:
@@ -374,7 +379,7 @@ def save_db_to_csv_app():
 
     # reload new csv File
     db.populate_db()
-    return home_app()
+    return jsonify(dict({'status': 'success'}))
 
 @server.route('/undo', methods = ['GET'])
 def undo_db_reload_csv():
@@ -395,7 +400,7 @@ def home_app():
         db = DBManager()
     return render_template("home.html")
 
-@server.errorhandler(404)
+@server.errorhandler(404)git 
 def page_not_found_app(e):
     return render_template("404.html")
 
