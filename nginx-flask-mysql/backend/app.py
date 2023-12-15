@@ -3,6 +3,7 @@ from flask import Flask, render_template, redirect, json, request, send_from_dir
 import mysql.connector
 from mysql.connector.errors import Error
 import csv
+import shutil
 import sys
 import re
 from mouser_api import ApiSearch
@@ -42,13 +43,9 @@ class DBManager:
         self.connection = None
         self.cursor = None
 
-        first_run = b'\x00'
-        if os.path.isfile('/pickle/Flag.pkl'):
-            with open('/pickle/Flag.pkl', 'rb') as f:
-                first_run =  f.read()
-
-        if first_run == b'\x00':
+        if check_first_run() == b'\x00':
             self.populate_db()
+            save_db_to_csv_app()
 
     def __connect_to_db( self, attempts=3, database='example', host="db",
                     user="root", password_file="/run/secrets/db-password"):
@@ -150,7 +147,11 @@ class DBManager:
         if not self.__connect_to_db():
             return
 
-        file = open('partList.csv', 'r')
+        if check_first_run() ==  b'\x00':
+            file = open('partList.csv', 'r')
+        else:
+            file = open('/dbBackup/partList.csv', 'r')
+
         partlist = csv.DictReader(file)
 
         ids = []
@@ -158,7 +159,6 @@ class DBManager:
         for row in partlist:
             ids.append(row["id"])
             mouserIds.append(row['mouserId'])
-
 
         self.__execute_sql_query_with_retry_db('DROP TABLE IF EXISTS parts')
         retval = self.__execute_sql_query_with_retry_db('CREATE TABLE parts ('
@@ -366,19 +366,17 @@ def save_db_to_csv_app():
     rows = db.select_all_db(let_conn_open=True)
 
     try:
-        file = open('partList.csv', 'w')
+        file = open('/dbBackup/partList.csv', 'w')
         write = csv.writer(file)
+        write.writerow([str('id'), str('mouserId')])
+        for row in rows:
+            write.writerow([row["id"], row["mouserId"]])
+        file.close()
+
     except Exception as e:
         text = str(e)
         return jsonify(dict({'status': 'fail', 'message': text}))
 
-    write.writerow([str('id'), str('mouserId')])
-    for row in rows:
-        write.writerow([row["id"], row["mouserId"]])
-    file.close()
-
-    # reload new csv File3
-    db.populate_db()
     return jsonify(dict({'status': 'success'}))
 
 @server.route('/undo', methods = ['GET'])
