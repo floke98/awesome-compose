@@ -400,7 +400,7 @@ def home_app():
         db = DBManager()
     return render_template("home.html")
 
-@server.errorhandler(404)git 
+@server.errorhandler(404)
 def page_not_found_app(e):
     return render_template("404.html")
 
