@@ -24,8 +24,8 @@ server.run(debug=True)
 # ------------------------------------------------------------------------------
 db = None
 def check_first_run():
-    if os.path.isfile('./Flag.pkl'):
-        with open('./Flag.pkl', 'rb') as f:
+    if os.path.isfile('/pickle/Flag.pkl'):
+        with open('/pickle/Flag.pkl', 'rb') as f:
             return f.read()
     else:
         # print('File not exists but 0 returned', file=sys.stderr)
@@ -43,8 +43,8 @@ class DBManager:
         self.cursor = None
 
         first_run = b'\x00'
-        if os.path.isfile('./Flag.pkl'):
-            with open('./Flag.pkl', 'rb') as f:
+        if os.path.isfile('/pickle/Flag.pkl'):
+            with open('/pickle/Flag.pkl', 'rb') as f:
                 first_run =  f.read()
 
         if first_run == b'\x00':
@@ -170,7 +170,7 @@ class DBManager:
                                                    [ids[i], mouserIds[i]])
         # write the pickle flag after initialising the db
         if retval[0]:
-            with open('./Flag.pkl', 'wb') as f:
+            with open('/pickle/Flag.pkl', 'wb') as f:
                 f.write(b'\x01')
 
         self.close_after_every_use_db()
@@ -377,7 +377,7 @@ def save_db_to_csv_app():
         write.writerow([row["id"], row["mouserId"]])
     file.close()
 
-    # reload new csv File
+    # reload new csv File3
     db.populate_db()
     return jsonify(dict({'status': 'success'}))
 
