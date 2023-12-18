@@ -7,6 +7,8 @@ from dbmanager import DBManager, debug
 server = Flask(__name__)
 server.run(debug=debug)
 
+# TODO api calls -> make delayed calls when print all
+
 # helper:
 # https://stackoverflow.com/questions/13568508/python-mysql-handling-timeouts
 # https://stackoverflow.com/questions/5504340/python-mysqldb-connection-close-vs-cursor-close
