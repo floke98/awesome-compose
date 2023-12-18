@@ -5,7 +5,7 @@ import os
 from mouser_api import ApiSearch
 import logging
 
-debug = True
+debug = False
 
 
 if debug:
