@@ -29,6 +29,9 @@ services:
       context: backend
       target: builder
     restart: always
+    volumes:
+      - ./pickle:/pickle
+      - ./dbBackup:/dbBackup
     secrets:
       - db-password
     ports:
