@@ -63,6 +63,9 @@ services:
     command: ["/bin/sh", "-c", "while true; do sleep 86400; docker restart nginx-flask-mysql_backend_1; done"]
     restart: unless-stopped
 
+volumes:
+  db-data:
+
 secrets:
   db-password:
     file: db/password.txt
