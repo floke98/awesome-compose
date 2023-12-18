@@ -139,7 +139,7 @@ def save_db_to_csv_app():
     if not db:
         db = DBManager()
 
-    rows = db.select_all_db(let_conn_open=True)
+    rows = db.select_all_db(let_conn_open=False)
 
     try:
         file = open('/dbBackup/partList.csv', 'w')
